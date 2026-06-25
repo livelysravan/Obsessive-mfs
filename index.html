@@ -1,0 +1,708 @@
+import React, { useState, useEffect, useMemo, useRef } from "react";
+
+/* ----------------------------------------------------------------------- */
+/* Data layer                                                               */
+/* ----------------------------------------------------------------------- */
+
+const todayKey = (d = new Date()) => {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+const addDays = (key, n) => { const d = new Date(key + "T00:00:00"); d.setDate(d.getDate() + n); return todayKey(d); };
+const dateLabel = (key) => new Date(key + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const seedProfiles = () => ([
+  { id: "sravan", name: "Sravan", color: "#8b7cf6" },
+  { id: "vichu", name: "Vichu", color: "#34d3a8" },
+  { id: "aditya", name: "Aditya", color: "#f5a35c" },
+]);
+
+const seedTasks = (profileId) => {
+  const t = todayKey(), y = addDays(t, -1);
+  if (profileId === "sravan") {
+    return [
+      { id: uid(), text: "Finish the deck for Monday", date: t, done: false, note: "", createdAt: 1, remindAt: null },
+      { id: uid(), text: "Call mom", date: t, done: false, note: "", createdAt: 2, remindAt: null },
+      { id: uid(), text: "Pay electricity bill", date: y, done: false, note: "", createdAt: 3, remindAt: null },
+    ];
+  }
+  return [];
+};
+
+/* ----------------------------------------------------------------------- */
+/* Theme — near-black, crisp single accent, no warm undertone               */
+/* ----------------------------------------------------------------------- */
+
+const themes = {
+  dark: {
+    bg: "#08090b", bg2: "#0f1013", bg3: "#16171b", bgRaised: "#131418",
+    border: "rgba(255,255,255,0.07)", borderStrong: "rgba(255,255,255,0.14)",
+    text: "#f5f5f7", textMuted: "#8b8d96", textFaint: "#4d4f57",
+    accent: "#6e6bf5", accentText: "#ffffff",
+    done: "#2dd4a0", overdue: "#ff6b5e",
+    overlay: "rgba(5,5,7,0.78)",
+  },
+  light: {
+    bg: "#fbfbfc", bg2: "#ffffff", bg3: "#f0f0f3", bgRaised: "#ffffff",
+    border: "rgba(0,0,0,0.07)", borderStrong: "rgba(0,0,0,0.14)",
+    text: "#0d0d10", textMuted: "#6b6d76", textFaint: "#a8aab2",
+    accent: "#5b4ee0", accentText: "#ffffff",
+    done: "#0f9d72", overdue: "#d6402f",
+    overlay: "rgba(20,20,24,0.5)",
+  },
+};
+
+const FONT_DISPLAY = "'Hanken Grotesk', 'Inter', -apple-system, sans-serif";
+const FONT_BODY = "'Inter', -apple-system, sans-serif";
+const FONT_MONO = "'JetBrains Mono', ui-monospace, monospace";
+
+/* ----------------------------------------------------------------------- */
+/* Icons — inline, minimal stroke set                                      */
+/* ----------------------------------------------------------------------- */
+
+const Icon = {
+  bell: (c, s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" /><path d="M13.73 21a2 2 0 01-3.46 0" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  note: (c, s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8"><path d="M4 4h12l4 4v12H4z" strokeLinecap="round" strokeLinejoin="round" /><path d="M16 4v4h4" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  trash: (c, s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8"><path d="M3 6h18" strokeLinecap="round" /><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m2 0v14a1 1 0 01-1 1H7a1 1 0 01-1-1V6" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  chevLeft: (c, s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  chevRight: (c, s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  x: (c, s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  plus: (c, s = 13) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>,
+  check: (c, s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.6"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  arrowRight: (c, s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2"><path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  sun: (c, s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" strokeLinecap="round" /></svg>,
+  moon: (c, s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  flame: (c, s = 13) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8"><path d="M8.5 14.5A2.5 2.5 0 0011 17a2.5 2.5 0 002.5-2.5c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7.5 7.5 0 11-15 0c0-1.153.433-2.294 1-3.5.467-.97.5-2.06.5-3.5z" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+};
+
+/* ----------------------------------------------------------------------- */
+/* Shared atoms                                                            */
+/* ----------------------------------------------------------------------- */
+
+function IconBtn({ children, onClick, label, t, danger, size = 28 }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick} aria-label={label} title={label}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        width: size, height: size, borderRadius: 7, border: "none",
+        background: hover ? t.bg3 : "transparent",
+        color: danger ? (hover ? t.overdue : t.textFaint) : (hover ? t.text : t.textFaint),
+        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "background 100ms ease, color 100ms ease",
+      }}
+    >{children}</button>
+  );
+}
+
+function Checkbox({ checked, onChange, t }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onChange} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      aria-label={checked ? "Mark as not done" : "Mark as done"}
+      style={{
+        width: 18, height: 18, minWidth: 18, borderRadius: 5,
+        border: checked ? `1.5px solid ${t.done}` : `1.5px solid ${hover ? t.borderStrong : t.border}`,
+        background: checked ? t.done : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", transition: "all 140ms ease", flexShrink: 0,
+      }}
+    >{checked && Icon.check(t.bg, 11)}</button>
+  );
+}
+
+function Pill({ children, color, bg }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4, fontFamily: FONT_BODY,
+      fontSize: 11, fontWeight: 500, color, background: bg, padding: "3px 8px",
+      borderRadius: 6, letterSpacing: 0.1,
+    }}>{children}</span>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Intro                                                                   */
+/* ----------------------------------------------------------------------- */
+
+function IntroScreen({ onEnter, t }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => { const id = setTimeout(() => setShow(true), 60); return () => clearTimeout(id); }, []);
+
+  return (
+    <div onClick={onEnter} style={{
+      minHeight: "100vh", background: t.bg, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 24, position: "relative", overflow: "hidden",
+    }}>
+      <div style={{
+        position: "absolute", width: 600, height: 600, borderRadius: "50%",
+        background: `radial-gradient(circle, ${t.accent}22, transparent 70%)`,
+        filter: "blur(40px)", opacity: show ? 1 : 0, transition: "opacity 1400ms ease",
+      }} />
+      <div style={{
+        opacity: show ? 1 : 0, transform: show ? "translateY(0) scale(1)" : "translateY(8px) scale(0.98)",
+        transition: "opacity 700ms cubic-bezier(.16,1,.3,1), transform 700ms cubic-bezier(.16,1,.3,1)",
+        textAlign: "center", position: "relative", zIndex: 1,
+      }}>
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 24,
+          fontFamily: FONT_MONO, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase",
+          color: t.textMuted, border: `1px solid ${t.border}`, borderRadius: 20, padding: "5px 12px",
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: t.accent }} />
+          daily ritual, not a to-do app
+        </div>
+        <h1 style={{
+          fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: "clamp(2.4rem, 8vw, 4.6rem)",
+          color: t.text, margin: 0, lineHeight: 1, letterSpacing: -2,
+        }}>
+          Obsession kills<br />talent.
+        </h1>
+        <p style={{ fontFamily: FONT_BODY, fontSize: 14, color: t.textFaint, margin: "28px 0 0", letterSpacing: 0.2 }}>
+          tap to continue
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Profile picker                                                          */
+/* ----------------------------------------------------------------------- */
+
+function ProfilePicker({ profiles, onSelect, onAdd, t }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const palette = ["#8b7cf6", "#34d3a8", "#f5a35c", "#ec6ba5", "#5cb8f5", "#d4d166"];
+
+  const submit = (e) => {
+    e.preventDefault();
+    const v = name.trim();
+    if (!v) return;
+    onAdd(v, palette[profiles.length % palette.length]);
+    setName(""); setAdding(false);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: t.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <p style={{ fontFamily: FONT_MONO, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", color: t.textFaint, marginBottom: 32 }}>
+        select profile
+      </p>
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center", maxWidth: 640 }}>
+        {profiles.map((p) => <ProfileTile key={p.id} profile={p} onClick={() => onSelect(p.id)} t={t} />)}
+        {adding ? (
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 88, height: 88, borderRadius: 18, background: t.bg2, border: `1.5px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={() => { if (!name.trim()) setAdding(false); }}
+                placeholder="name" style={{ width: 72, textAlign: "center", background: "transparent", border: "none", outline: "none", color: t.text, fontFamily: FONT_BODY, fontSize: 13 }} />
+            </div>
+            <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: t.textFaint }}>enter ↵</span>
+          </form>
+        ) : (
+          <button onClick={() => setAdding(true)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer" }}>
+            <div style={{ width: 88, height: 88, borderRadius: 18, border: `1.5px dashed ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: t.textFaint }}>
+              {Icon.plus(t.textFaint)}
+            </div>
+            <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: t.textFaint }}>add</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProfileTile({ profile, onClick, t }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer",
+      transform: hover ? "translateY(-3px)" : "translateY(0)", transition: "transform 180ms cubic-bezier(.16,1,.3,1)",
+    }}>
+      <div style={{
+        width: 88, height: 88, borderRadius: 18, background: profile.color,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 32, color: "#08090b",
+        boxShadow: hover ? `0 0 0 2px ${t.text}, 0 8px 24px ${profile.color}33` : "0 0 0 0px transparent",
+        transition: "box-shadow 180ms ease",
+      }}>{profile.name.charAt(0).toUpperCase()}</div>
+      <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, color: hover ? t.text : t.textMuted, transition: "color 140ms ease" }}>{profile.name}</span>
+    </button>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Task row — inline resolve actions live right on the row, no modal flow  */
+/* ----------------------------------------------------------------------- */
+
+function TaskRow({ task, isOverdue, onToggle, onDelete, onEditText, onOpenNote, onSetReminder, onBringToToday, onPushTomorrow, t, exiting }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(task.text);
+  const [hover, setHover] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
+
+  const commit = () => {
+    const v = draft.trim();
+    if (v) onEditText(v); else setDraft(task.text);
+    setEditing(false);
+  };
+
+  return (
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: "4px 10px", padding: "10px 12px",
+        borderRadius: 9, background: hover ? t.bg3 : "transparent",
+        opacity: exiting ? 0 : (task.done ? 0.45 : 1),
+        transform: exiting ? "translateX(8px)" : "translateX(0)",
+        transition: "opacity 220ms ease, transform 220ms ease, background 100ms ease",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: "1 1 200px", minWidth: 0 }}>
+        <div style={{ paddingTop: 2 }}><Checkbox checked={task.done} onChange={onToggle} t={t} /></div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {editing ? (
+            <input ref={ref} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+              onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(task.text); setEditing(false); } }}
+              style={{ width: "100%", background: "transparent", border: "none", outline: "none", borderBottom: `1px solid ${t.borderStrong}`, color: t.text, fontFamily: FONT_BODY, fontSize: 14, padding: "2px 0" }} />
+          ) : (
+            <p onClick={() => setEditing(true)} style={{ margin: 0, fontFamily: FONT_BODY, fontSize: 14, color: t.text, cursor: "text", textDecoration: task.done ? "line-through" : "none", lineHeight: 1.45, wordBreak: "break-word" }}>
+              {task.text}
+            </p>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+            {isOverdue && !task.done && <Pill color={t.overdue} bg={`${t.overdue}1a`}>overdue · {dateLabel(task.date)}</Pill>}
+            {task.remindAt && <Pill color={t.accent} bg={`${t.accent}1a`}>{Icon.bell(t.accent, 10)} {task.remindAt}</Pill>}
+            {task.note && <Pill color={t.textMuted} bg={t.bg3}>{Icon.note(t.textMuted, 10)} note</Pill>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, marginLeft: "auto", paddingLeft: 28 }}>
+        {isOverdue && !task.done && (
+          <button onClick={onBringToToday} style={{
+            display: "flex", alignItems: "center", gap: 5, height: 28, padding: "0 9px",
+            borderRadius: 7, border: `1px solid ${t.overdue}40`, background: `${t.overdue}14`,
+            color: t.overdue, fontFamily: FONT_BODY, fontSize: 12, fontWeight: 600, cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}>
+            {Icon.check(t.overdue, 12)} today
+          </button>
+        )}
+        {!task.done && (
+          <button onClick={onPushTomorrow} style={{
+            display: "flex", alignItems: "center", gap: 5, height: 28, padding: "0 9px",
+            borderRadius: 7, border: `1px solid ${t.border}`, background: "transparent",
+            color: t.textMuted, fontFamily: FONT_BODY, fontSize: 12, fontWeight: 600, cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}>
+            {Icon.arrowRight(t.textMuted, 12)} tomorrow
+          </button>
+        )}
+        <div style={{ display: "flex" }}>
+          <IconBtn label="Add note" onClick={onOpenNote} t={t}>{Icon.note(undefined)}</IconBtn>
+          <IconBtn label="Set reminder" onClick={onSetReminder} t={t}>{Icon.bell(undefined)}</IconBtn>
+          <IconBtn label="Delete" danger onClick={onDelete} t={t}>{Icon.trash(undefined)}</IconBtn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddTaskInput({ onAdd, placeholder, t }) {
+  const [v, setV] = useState("");
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); const x = v.trim(); if (x) { onAdd(x); setV(""); } }}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+      <div style={{ width: 18, height: 18, minWidth: 18, borderRadius: 5, border: `1.5px dashed ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {Icon.plus(t.textFaint, 11)}
+      </div>
+      <input value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder}
+        style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: t.text, fontFamily: FONT_BODY, fontSize: 14 }} />
+    </form>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Modals — note + reminder only, no review wizard                         */
+/* ----------------------------------------------------------------------- */
+
+function Modal({ onClose, t, children, maxWidth = 380 }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: t.overlay, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20, backdropFilter: "blur(4px)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: t.bgRaised, borderRadius: 14, padding: 20, width: "100%", maxWidth, border: `1px solid ${t.border}` }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function NoteModal({ task, onSave, onClose, t }) {
+  const [text, setText] = useState(task.note || "");
+  return (
+    <Modal onClose={onClose} t={t} maxWidth={420}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
+        <p style={{ margin: 0, fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15, color: t.text }}>{task.text}</p>
+        <IconBtn label="Close" onClick={onClose} t={t}>{Icon.x(undefined)}</IconBtn>
+      </div>
+      <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Add details, context, links..." rows={5}
+        style={{ width: "100%", background: t.bg2, border: `1px solid ${t.border}`, borderRadius: 9, padding: 11, color: t.text, fontFamily: FONT_BODY, fontSize: 13.5, resize: "vertical", outline: "none", boxSizing: "border-box" }} />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+        <button onClick={() => { onSave(text); onClose(); }} style={{ background: t.accent, color: t.accentText, border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: FONT_BODY }}>
+          Save
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function ReminderModal({ task, onSave, onClose, t }) {
+  const [time, setTime] = useState(task.remindAt || "");
+  return (
+    <Modal onClose={onClose} t={t} maxWidth={300}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+        <p style={{ margin: 0, fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15, color: t.text }}>Remind me</p>
+        <IconBtn label="Close" onClick={onClose} t={t}>{Icon.x(undefined)}</IconBtn>
+      </div>
+      <input type="time" autoFocus value={time} onChange={(e) => setTime(e.target.value)}
+        style={{ width: "100%", background: t.bg2, border: `1px solid ${t.border}`, borderRadius: 9, padding: "9px 11px", color: t.text, fontFamily: FONT_BODY, fontSize: 13.5, outline: "none", boxSizing: "border-box" }} />
+      <p style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: t.textFaint, margin: "9px 0 0", lineHeight: 1.5 }}>
+        Highlights on the task while this tab is open.
+      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+        <button onClick={() => { onSave(null); onClose(); }} style={{ background: "transparent", color: t.textMuted, border: `1px solid ${t.border}`, borderRadius: 8, padding: "8px 14px", fontSize: 13.5, cursor: "pointer", fontFamily: FONT_BODY }}>Clear</button>
+        <button onClick={() => { onSave(time || null); onClose(); }} style={{ background: t.accent, color: t.accentText, border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13.5, fontWeight: 600, cursor: "pointer", fontFamily: FONT_BODY }}>Set</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Stat block                                                              */
+/* ----------------------------------------------------------------------- */
+
+function StatBlock({ label, value, accent, t }) {
+  return (
+    <div style={{ background: t.bg2, border: `1px solid ${t.border}`, borderRadius: 12, padding: "14px 16px", flex: 1 }}>
+      <p style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: t.textFaint, margin: "0 0 6px", textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</p>
+      <p style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 24, color: accent || t.text, margin: 0, letterSpacing: -0.5 }}>{value}</p>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Task block — bento card holding a list of tasks for a given day          */
+/* ----------------------------------------------------------------------- */
+
+function TaskBlock({ title, subtitle, tasks, today, t, onToggle, onDelete, onEditText, onOpenNote, onSetReminder, onBringToToday, onPushTomorrow, onAdd, addPlaceholder, exitingIds }) {
+  const doneCount = tasks.filter((x) => x.done).length;
+  return (
+    <div style={{ background: t.bg2, border: `1px solid ${t.border}`, borderRadius: 14, padding: "16px 8px 8px", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "0 10px 12px" }}>
+        <div>
+          <h2 style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 16, color: t.text, margin: 0, letterSpacing: -0.2 }}>{title}</h2>
+          <p style={{ fontFamily: FONT_BODY, fontSize: 12, color: t.textFaint, margin: "2px 0 0" }}>{subtitle}</p>
+        </div>
+        {tasks.length > 0 && (
+          <span style={{ fontFamily: FONT_MONO, fontSize: 12, color: t.textMuted }}>{doneCount}/{tasks.length}</span>
+        )}
+      </div>
+
+      {tasks.length === 0 ? (
+        <div style={{ padding: "20px 10px", textAlign: "center" }}>
+          <p style={{ fontFamily: FONT_BODY, fontSize: 13, color: t.textFaint, margin: 0 }}>Nothing here.</p>
+        </div>
+      ) : (
+        <div>
+          {tasks.map((task) => (
+            <TaskRow key={task.id} task={task} isOverdue={task.date < today && !task.done}
+              exiting={exitingIds?.has(task.id)}
+              onToggle={() => onToggle(task.id)} onDelete={() => onDelete(task.id)}
+              onEditText={(text) => onEditText(task.id, text)} onOpenNote={() => onOpenNote(task.id)}
+              onSetReminder={() => onSetReminder(task.id)}
+              onBringToToday={() => onBringToToday(task.id)} onPushTomorrow={() => onPushTomorrow(task.id)} t={t} />
+          ))}
+        </div>
+      )}
+
+      <div style={{ borderTop: `1px solid ${t.border}`, marginTop: 4 }}>
+        <AddTaskInput onAdd={onAdd} placeholder={addPlaceholder} t={t} />
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* History — browse any earlier day's tasks, read-only-ish but can reopen  */
+/* ----------------------------------------------------------------------- */
+
+function HistoryPanel({ tasks, today, onClose, onToggle, onPushTomorrow, t }) {
+  // every distinct past date that has at least one task, most recent first
+  const pastDates = useMemo(() => {
+    const set = new Set(tasks.filter((x) => x.date < today).map((x) => x.date));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [tasks, today]);
+
+  const [selected, setSelected] = useState(pastDates[0] || null);
+  const dayTasks = useMemo(() => tasks.filter((x) => x.date === selected).sort((a, b) => a.createdAt - b.createdAt), [tasks, selected]);
+
+  return (
+    <Modal onClose={onClose} t={t} maxWidth={560}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <p style={{ margin: 0, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 16, color: t.text }}>History</p>
+        <IconBtn label="Close" onClick={onClose} t={t}>{Icon.x(undefined)}</IconBtn>
+      </div>
+
+      {pastDates.length === 0 ? (
+        <p style={{ fontFamily: FONT_BODY, fontSize: 13, color: t.textFaint, textAlign: "center", padding: "20px 0" }}>
+          No earlier days yet — once today becomes yesterday, it'll show up here.
+        </p>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 360, overflowY: "auto" }}>
+            {pastDates.map((d) => {
+              const dTasks = tasks.filter((x) => x.date === d);
+              const allDone = dTasks.every((x) => x.done);
+              const active = d === selected;
+              return (
+                <button key={d} onClick={() => setSelected(d)} style={{
+                  textAlign: "left", padding: "8px 10px", borderRadius: 8, border: "none", cursor: "pointer",
+                  background: active ? t.bg3 : "transparent", fontFamily: FONT_BODY,
+                }}>
+                  <div style={{ fontSize: 12.5, color: active ? t.text : t.textMuted, fontWeight: 500 }}>{dateLabel(d)}</div>
+                  <div style={{ fontSize: 11, color: allDone ? t.done : t.textFaint, marginTop: 2 }}>
+                    {dTasks.filter((x) => x.done).length}/{dTasks.length} done
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ borderLeft: `1px solid ${t.border}`, paddingLeft: 14, maxHeight: 360, overflowY: "auto" }}>
+            {dayTasks.length === 0 ? (
+              <p style={{ fontFamily: FONT_BODY, fontSize: 13, color: t.textFaint }}>Nothing logged.</p>
+            ) : dayTasks.map((task) => (
+              <div key={task.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "7px 0" }}>
+                <div style={{ paddingTop: 2 }}><Checkbox checked={task.done} onChange={() => onToggle(task.id)} t={t} /></div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0, fontFamily: FONT_BODY, fontSize: 13.5, color: t.text, textDecoration: task.done ? "line-through" : "none", opacity: task.done ? 0.5 : 1 }}>
+                    {task.text}
+                  </p>
+                  {task.note && <p style={{ margin: "2px 0 0", fontFamily: FONT_BODY, fontSize: 12, color: t.textFaint }}>{task.note}</p>}
+                </div>
+                {!task.done && (
+                  <button onClick={() => onPushTomorrow(task.id)} style={{
+                    fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600, color: t.textMuted,
+                    background: "transparent", border: `1px solid ${t.border}`, borderRadius: 6,
+                    padding: "4px 8px", cursor: "pointer", whiteSpace: "nowrap",
+                  }}>still open</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function TaskApp({ profile, tasks, setTasks, onSwitchProfile, theme, onToggleTheme, t }) {
+  const [exitingIds, setExitingIds] = useState(new Set());
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const today = todayKey();
+  const tomorrow = addDays(today, 1);
+  const yesterday = addDays(today, -1);
+  const [viewingDate, setViewingDate] = useState(today);
+
+  const isToday = viewingDate === today;
+  const isTomorrow = viewingDate === tomorrow;
+  const isYesterday = viewingDate === yesterday;
+
+  // "carried over into today" = anything still dated yesterday (open or just
+  // completed). Older days don't keep cluttering Today forever — they live
+  // in History instead once you've moved past them.
+  const overdueTasks = useMemo(() => tasks.filter((x) => x.date < today && !x.done).sort((a, b) => a.date.localeCompare(b.date)), [tasks, today]);
+  const carriedOverDone = useMemo(() => tasks.filter((x) => x.date === yesterday && x.done), [tasks, yesterday]);
+  const dayTasks = useMemo(() => tasks.filter((x) => x.date === viewingDate).sort((a, b) => a.createdAt - b.createdAt), [tasks, viewingDate]);
+  // overdue tasks (still open, from any past day) + yesterday's just-completed ones fold into Today
+  const viewTasks = useMemo(
+    () => (isToday ? [...overdueTasks, ...carriedOverDone, ...dayTasks] : dayTasks),
+    [isToday, overdueTasks, carriedOverDone, dayTasks]
+  );
+
+  const streak = useMemo(() => {
+    let count = 0, cursor = addDays(today, -1);
+    for (let i = 0; i < 30; i++) {
+      const dt = tasks.filter((x) => x.date === cursor);
+      if (dt.length === 0) break;
+      if (dt.every((x) => x.done)) { count++; cursor = addDays(cursor, -1); } else break;
+    }
+    return count;
+  }, [tasks, today]);
+
+  const todayTasksOnly = useMemo(() => tasks.filter((x) => x.date === today), [tasks, today]);
+  const totalDone = todayTasksOnly.filter((x) => x.done).length;
+  const totalOpen = todayTasksOnly.length - totalDone + overdueTasks.length;
+
+  const addTask = (text, date) => setTasks((p) => [...p, { id: uid(), text, date, done: false, note: "", createdAt: Date.now(), remindAt: null }]);
+  const toggleTask = (id) => setTasks((p) => p.map((x) => x.id === id ? { ...x, done: !x.done } : x));
+  const deleteTask = (id) => {
+    setExitingIds((s) => new Set([...s, id]));
+    setTimeout(() => {
+      setTasks((p) => p.filter((x) => x.id !== id));
+      setExitingIds((s) => { const n = new Set(s); n.delete(id); return n; });
+    }, 200);
+  };
+  const editText = (id, text) => setTasks((p) => p.map((x) => x.id === id ? { ...x, text } : x));
+  const bringToToday = (id) => setTasks((p) => p.map((x) => x.id === id ? { ...x, date: today } : x));
+  const pushToTomorrow = (id) => {
+    setExitingIds((s) => new Set([...s, id]));
+    setTimeout(() => {
+      setTasks((p) => p.map((x) => x.id === id ? { ...x, date: addDays(x.date, 1) } : x));
+      setExitingIds((s) => { const n = new Set(s); n.delete(id); return n; });
+    }, 200);
+  };
+
+  const [noteTaskId, setNoteTaskId] = useState(null);
+  const [reminderTaskId, setReminderTaskId] = useState(null);
+  const setNote = (id, note) => setTasks((p) => p.map((x) => x.id === id ? { ...x, note } : x));
+  const setReminder = (id, remindAt) => setTasks((p) => p.map((x) => x.id === id ? { ...x, remindAt } : x));
+  const noteTask = tasks.find((x) => x.id === noteTaskId);
+  const reminderTask = tasks.find((x) => x.id === reminderTaskId);
+
+  return (
+    <div style={{ minHeight: "100vh", background: t.bg, color: t.text, fontFamily: FONT_BODY, paddingBottom: 60 }}>
+      {/* top bar */}
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <button onClick={onSwitchProfile} style={{ display: "flex", alignItems: "center", gap: 9, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+          <div style={{ width: 24, height: 24, borderRadius: 6, background: profile.color, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 12, color: "#08090b" }}>
+            {profile.name.charAt(0).toUpperCase()}
+          </div>
+          <span style={{ fontSize: 13, color: t.textMuted, fontWeight: 500 }}>{profile.name}</span>
+        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setHistoryOpen(true)} style={{
+            display: "flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px",
+            borderRadius: 8, border: `1px solid ${t.border}`, background: t.bg2,
+            color: t.textMuted, cursor: "pointer", fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+          }}>History</button>
+          <button onClick={onToggleTheme} aria-label="Toggle theme" style={{
+            width: 32, height: 32, borderRadius: 8, border: `1px solid ${t.border}`, background: t.bg2,
+            color: t.textMuted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          }}>{theme === "dark" ? Icon.sun(undefined) : Icon.moon(undefined)}</button>
+        </div>
+      </div>
+
+      {/* hero / stats strip — always reflects today regardless of which day is being viewed */}
+      <div style={{ maxWidth: 640, margin: "20px auto 0", padding: "0 20px" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <StatBlock label="Open today" value={totalOpen} t={t} />
+          <StatBlock label="Done today" value={totalDone} accent={t.done} t={t} />
+          <StatBlock label="Overdue" value={overdueTasks.length} accent={overdueTasks.length > 0 ? t.overdue : t.text} t={t} />
+          <StatBlock label="Streak" value={streak > 0 ? `${streak}d` : "—"} accent={streak > 0 ? t.accent : t.text} t={t} />
+        </div>
+      </div>
+
+      {/* day navigator */}
+      <div style={{ maxWidth: 640, margin: "20px auto 0", padding: "0 20px", display: "flex", alignItems: "center", gap: 6 }}>
+        <IconBtn label="Previous day" onClick={() => setViewingDate((d) => addDays(d, -1))} t={t} size={30}>{Icon.chevLeft(undefined)}</IconBtn>
+        <div style={{ display: "flex", gap: 6, flex: 1 }}>
+          {[yesterday, today, tomorrow].map((key) => {
+            const label = key === today ? "Today" : key === tomorrow ? "Tomorrow" : "Yesterday";
+            const active = key === viewingDate;
+            return (
+              <button key={key} onClick={() => setViewingDate(key)} style={{
+                flex: 1, padding: "9px 0", borderRadius: 9, fontSize: 13, fontWeight: 600,
+                border: active ? `1px solid ${t.accent}55` : `1px solid ${t.border}`,
+                background: active ? `${t.accent}16` : "transparent",
+                color: active ? t.accent : t.textMuted, cursor: "pointer", fontFamily: FONT_BODY,
+                transition: "all 140ms ease",
+              }}>{label}</button>
+            );
+          })}
+        </div>
+        <IconBtn label="Next day" onClick={() => setViewingDate((d) => addDays(d, 1))} t={t} size={30}>{Icon.chevRight(undefined)}</IconBtn>
+      </div>
+
+      {/* single full-width task list for the day being viewed */}
+      <div style={{ maxWidth: 640, margin: "16px auto 0", padding: "0 20px" }}>
+        <TaskBlock
+          title={isToday ? "Today" : isTomorrow ? "Tomorrow" : isYesterday ? "Yesterday" : dateLabel(viewingDate)}
+          subtitle={isToday && overdueTasks.length > 0 ? `${overdueTasks.length} carried over · ${dateLabel(viewingDate)}` : dateLabel(viewingDate)}
+          tasks={viewTasks} today={today} t={t} exitingIds={exitingIds}
+          onToggle={toggleTask} onDelete={deleteTask} onEditText={editText}
+          onOpenNote={setNoteTaskId} onSetReminder={setReminderTaskId}
+          onBringToToday={bringToToday} onPushTomorrow={pushToTomorrow}
+          onAdd={(text) => addTask(text, viewingDate)}
+          addPlaceholder={isTomorrow ? "Queue something up for tomorrow..." : "Add a task..."}
+        />
+      </div>
+
+      {noteTask && <NoteModal task={noteTask} onSave={(n) => setNote(noteTask.id, n)} onClose={() => setNoteTaskId(null)} t={t} />}
+      {reminderTask && <ReminderModal task={reminderTask} onSave={(r) => setReminder(reminderTask.id, r)} onClose={() => setReminderTaskId(null)} t={t} />}
+      {historyOpen && <HistoryPanel tasks={tasks} today={today} onClose={() => setHistoryOpen(false)} onToggle={toggleTask} onPushTomorrow={pushToTomorrow} t={t} />}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Root                                                                     */
+/* ----------------------------------------------------------------------- */
+
+export default function ObsessionKillsTalent() {
+  const [stage, setStage] = useState("intro");
+  const [theme, setTheme] = useState("dark");
+  const [profiles, setProfiles] = useState(seedProfiles);
+  const [activeProfileId, setActiveProfileId] = useState(null);
+  const [tasksByProfile, setTasksByProfile] = useState({});
+
+  const t = themes[theme];
+
+  const getTasks = (id) => tasksByProfile[id] ?? seedTasks(id);
+  const setTasksForActive = (updater) => {
+    setTasksByProfile((prev) => {
+      const current = prev[activeProfileId] ?? seedTasks(activeProfileId);
+      const next = typeof updater === "function" ? updater(current) : updater;
+      return { ...prev, [activeProfileId]: next };
+    });
+  };
+  const addProfile = (name, color) => {
+    const id = name.toLowerCase().replace(/\s+/g, "-") + "-" + uid();
+    setProfiles((p) => [...p, { id, name, color }]);
+  };
+
+  return (
+    <div style={{ fontSize: 16 }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+        * { box-sizing: border-box; }
+        input::placeholder, textarea::placeholder { color: ${t.textFaint}; }
+        input[type="time"]::-webkit-calendar-picker-indicator { filter: ${theme === "dark" ? "invert(0.7)" : "none"}; cursor: pointer; }
+        body { margin: 0; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: ${t.border}; border-radius: 4px; }
+        @media (max-width: 680px) {
+          div[style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
+
+      {stage === "intro" && <IntroScreen onEnter={() => setStage("profiles")} t={t} />}
+      {stage === "profiles" && (
+        <ProfilePicker profiles={profiles} onAdd={addProfile} onSelect={(id) => { setActiveProfileId(id); setStage("app"); }} t={t} />
+      )}
+      {stage === "app" && activeProfileId && (
+        <TaskApp
+          profile={profiles.find((p) => p.id === activeProfileId)}
+          tasks={getTasks(activeProfileId)} setTasks={setTasksForActive}
+          onSwitchProfile={() => setStage("profiles")}
+          theme={theme} onToggleTheme={() => setTheme((x) => (x === "dark" ? "light" : "dark"))}
+          t={t}
+        />
+      )}
+    </div>
+  );
+}
